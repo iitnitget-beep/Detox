@@ -13,6 +13,9 @@ import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeoutOrNull
@@ -22,6 +25,13 @@ import javax.inject.Singleton
 
 /** A Firestore write was not acknowledged in time (usually offline); it stays queued in the SDK and dirty in Room. */
 class WriteTimeoutException : IOException("Firestore write timed out")
+
+/** The aggregate maintained by the onLectureCompleted Cloud Function. */
+data class CloudSummary(
+    val totalLectures: Long,
+    val completedLectures: Long,
+    val studiedSeconds: Long,
+)
 
 /** Result of a lectures snapshot listener event. */
 sealed interface LecturesSnapshot {
@@ -100,6 +110,24 @@ class FirestoreDataSource @Inject constructor(
 
     suspend fun deleteLecture(uid: String, id: String) {
         lectures(uid).document(id).delete().awaitWrite()
+    }
+
+    /** Live users/{uid}/stats/summary (null when missing or unreadable). */
+    fun statsSummaryFlow(uid: String): Flow<CloudSummary?> = callbackFlow {
+        val registration = statsSummary(uid).addSnapshotListener { snapshot, error ->
+            if (error != null || snapshot == null || !snapshot.exists()) {
+                trySend(null)
+            } else {
+                trySend(
+                    CloudSummary(
+                        totalLectures = snapshot.getLong("totalLectures") ?: 0L,
+                        completedLectures = snapshot.getLong("completedLectures") ?: 0L,
+                        studiedSeconds = snapshot.getLong("studiedSeconds") ?: 0L,
+                    ),
+                )
+            }
+        }
+        awaitClose { registration.remove() }
     }
 
     // ---- sessions ----

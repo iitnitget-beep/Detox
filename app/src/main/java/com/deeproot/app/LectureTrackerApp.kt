@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.deeproot.app.data.sync.SyncManager
+import com.deeproot.app.notifications.NotificationChannels
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -25,6 +26,7 @@ class LectureTrackerApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        NotificationChannels.createAll(this)
         // Seeds the bundled plan into Room (first launch) and starts Firestore sync.
         syncManager.start()
     }

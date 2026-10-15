@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.PauseCircle
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.SyncProblem
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
@@ -45,7 +47,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,7 +62,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.deeproot.app.core.model.ActiveSession
 import com.deeproot.app.core.model.Lecture
+import com.deeproot.app.core.timer.TimeFormat
 import com.deeproot.app.core.time.Dates
 import com.deeproot.app.ui.components.AppCard
 import com.deeproot.app.ui.components.Banner
@@ -67,16 +73,14 @@ import com.deeproot.app.ui.components.ErrorView
 import com.deeproot.app.ui.components.LoadingView
 import com.deeproot.app.ui.components.OfflineBanner
 import com.deeproot.app.ui.theme.AppTheme
+import kotlinx.coroutines.delay
 
-/**
- * Today screen. [onStartLecture] is null until the focus timer exists (Stage 2); [topContent] lets the caller add
- * banners such as "session running" or "permission missing".
- */
+/** Today screen: the selected day's lectures, the backlog, multi-select and the Start → Focus flow. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodayScreen(
-    onStartLecture: ((Lecture) -> Unit)? = null,
-    topContent: @Composable () -> Unit = {},
+    onOpenFocus: () -> Unit,
+    onOpenPermissions: () -> Unit,
     viewModel: TodayViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -97,11 +101,22 @@ fun TodayScreen(
                     if (result == SnackbarResult.ActionPerformed) viewModel.undo(event.undo)
                 }
                 is TodayEvent.ShowMessage -> snackbarHostState.showSnackbar(event.message)
+                TodayEvent.OpenFocus -> onOpenFocus()
             }
         }
     }
 
     BackHandler(enabled = state.selectionMode) { viewModel.clearSelection() }
+
+    state.startCandidate?.let { lecture ->
+        StartLectureDialog(
+            lecture = lecture,
+            focusModeEnabled = state.settings.focusModeEnabled,
+            focusReady = state.permissions.focusReady,
+            onDismiss = viewModel::dismissStart,
+            onStart = viewModel::confirmStart,
+        )
+    }
 
     if (state.showDeleteConfirm) {
         val n = state.selection.size
@@ -149,7 +164,19 @@ fun TodayScreen(
             else -> TodayList(
                 state = state,
                 contentPadding = inner,
-                topContent = topContent,
+                topContent = {
+                    state.activeSession?.let { ActiveSessionBanner(it, onOpenFocus) }
+                    if (state.missingPermissionLabels.isNotEmpty()) {
+                        Banner(
+                            icon = Icons.Outlined.WarningAmber,
+                            text = "Turned off: ${state.missingPermissionLabels.joinToString()}",
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                            actionLabel = "Fix",
+                            onAction = onOpenPermissions,
+                        )
+                    }
+                },
                 onPrev = viewModel::previousDay,
                 onNext = viewModel::nextDay,
                 onToday = viewModel::goToToday,
@@ -159,10 +186,32 @@ fun TodayScreen(
                 onRowLongClick = { lecture ->
                     if (state.selectionMode) viewModel.toggleSelection(lecture) else viewModel.onLongPress(lecture)
                 },
-                onStart = onStartLecture,
+                onStart = viewModel::requestStart,
             )
         }
     }
+}
+
+/** "Studying: Physics – Rotation 2 · 00:42:10" with a live timer; tap to open the Focus screen. */
+@Composable
+private fun ActiveSessionBanner(session: ActiveSession, onOpen: () -> Unit) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(session.timer.isRunning) {
+        while (session.timer.isRunning) {
+            now = System.currentTimeMillis()
+            delay(1_000L - (now % 1_000L))
+        }
+        now = System.currentTimeMillis()
+    }
+    val studied = TimeFormat.hms(session.timer.studiedMillis(now))
+    Banner(
+        icon = if (session.timer.isRunning) Icons.Outlined.Timer else Icons.Outlined.PauseCircle,
+        text = "${if (session.timer.isRunning) "Studying" else "Paused"}: ${session.displayName} · $studied",
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        actionLabel = "Open",
+        onAction = onOpen,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

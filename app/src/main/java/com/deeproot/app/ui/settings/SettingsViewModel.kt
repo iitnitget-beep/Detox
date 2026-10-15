@@ -8,6 +8,8 @@ import com.deeproot.app.data.seed.PlanSeeder
 import com.deeproot.app.data.seed.SeedState
 import com.deeproot.app.data.sync.SyncManager
 import com.deeproot.app.data.sync.SyncStatus
+import com.deeproot.app.permissions.PermissionChecker
+import com.deeproot.app.permissions.PermissionState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +27,7 @@ data class SettingsUiState(
     val sync: SyncStatus = SyncStatus(),
     val seed: SeedState = SeedState.Idle,
     val syncingNow: Boolean = false,
+    val permissions: PermissionState = PermissionState(),
 )
 
 @HiltViewModel
@@ -32,6 +35,7 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val syncManager: SyncManager,
     seeder: PlanSeeder,
+    permissionChecker: PermissionChecker,
 ) : ViewModel() {
 
     private val syncingNow = MutableStateFlow(false)
@@ -43,8 +47,13 @@ class SettingsViewModel @Inject constructor(
         syncManager.status,
         seeder.state,
         syncingNow,
-    ) { settings, sync, seed, busy -> SettingsUiState(settings, sync, seed, busy) }
+        permissionChecker.state,
+    ) { settings, sync, seed, busy, permissions -> SettingsUiState(settings, sync, seed, busy, permissions) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
+
+    fun setFocusMode(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.update { it.copy(focusModeEnabled = enabled) } }
+    }
 
     fun syncNow() {
         if (syncingNow.value) return

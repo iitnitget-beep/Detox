@@ -2,6 +2,7 @@ import { Firestore, Timestamp } from "firebase-admin/firestore";
 import { DEFAULT_PLANNED_MINUTES, LECTURES, USERS } from "./config";
 import { loadPlan } from "./plan/loadPlan";
 import { isVerified, PlannedLecture } from "./plan/parser";
+import { recomputeSummary } from "./summary";
 
 export interface SeedOutcome {
   /** Lectures in lecture_plan.md. */
@@ -93,6 +94,8 @@ export async function seedPlanForUser(db: Firestore, uid: string, opts: { force?
   if (verified) {
     // Only fields allowed by firestore.rules for users/{uid}, otherwise later client writes would be rejected.
     await userRef.set({ planSeeded: true, planSeededCount: expected }, { merge: true });
+    // Seed creations are skipped by onLectureCompleted (no 479-event storm); one recount initialises the stats.
+    await recomputeSummary(db, uid);
   }
   return {
     expected,

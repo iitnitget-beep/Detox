@@ -16,9 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -38,13 +38,46 @@ jobs:
           fi
 
       - name: Unit tests
-        run: ./gradlew --no-daemon --stacktrace testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon testDebugUnitTest 2>&1 | tee test.log
 
       - name: Assemble debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee debug.log
 
       - name: Assemble release APK (R8)
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon assembleRelease 2>&1 | tee release.log
+
+      - name: Test totals
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          t = f = e = s = 0
+          for path in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              r = ET.parse(path).getroot()
+              t += int(r.get("tests", 0)); f += int(r.get("failures", 0)); e += int(r.get("errors", 0)); s += int(r.get("skipped", 0))
+          print(f"::notice title=Android unit tests::{t} tests, {f} failures, {e} errors, {s} skipped")
+          PY
+
+      - name: Explain failure
+        if: failure()
+        run: |
+          for f in test.log debug.log release.log; do
+            [ -f "$f" ] && ci/annotate-log.sh "$f" error '^e: |^w: .*(deprecated|unused)|error:|FAILED|What went wrong|Exception|> Task .*FAILED|ERROR:|Missing class' "$f"
+          done
+          python3 - <<'PY' || true
+          import glob, xml.etree.ElementTree as ET
+          for path in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  for bad in list(case.findall("failure")) + list(case.findall("error")):
+                      msg = (bad.get("message") or "").replace("\n", " ")[:300]
+                      print(f"::error title=Failed test::{case.get('classname')}.{case.get('name')}: {msg}")
+          PY
 
       - name: Upload test reports
         if: always()
@@ -69,28 +102,45 @@ jobs:
       run:
         working-directory: functions
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: functions/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run lint
+      - name: Type-check
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee ../functions-lint.log
       - run: npm run build
-      - run: npm test
+      - name: Tests
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee ../functions-test.log
+      - name: Test totals
+        if: success()
+        working-directory: .
+        run: ci/annotate-log.sh functions-test.log notice '^# (tests|pass|fail) ' "Functions tests"
+      - name: Explain failure
+        if: failure()
+        working-directory: .
+        run: |
+          [ -f functions-lint.log ] && ci/annotate-log.sh functions-lint.log error 'error TS' "tsc"
+          [ -f functions-test.log ] && ci/annotate-log.sh functions-test.log error '^not ok|AssertionError|Error:|expected|actual' "Functions tests"
+          true
 
   firestore-rules:
     name: Firestore security rules (emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -104,5 +154,14 @@ jobs:
         working-directory: firestore-tests
       - run: npx tsc -p tsconfig.json
         working-directory: firestore-tests
-      - run: npm run test:emulator
+      - name: Rules tests against the emulator
         working-directory: firestore-tests
+        run: |
+          set -o pipefail
+          npm run test:emulator 2>&1 | tee ../rules-test.log
+      - name: Test totals
+        if: success()
+        run: ci/annotate-log.sh rules-test.log notice '^# (tests|pass|fail) ' "Rules tests"
+      - name: Explain failure
+        if: failure()
+        run: ci/annotate-log.sh rules-test.log error '^not ok|AssertionError|Error:|FirebaseError|PERMISSION_DENIED|expected' "Rules tests"

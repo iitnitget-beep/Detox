@@ -2,15 +2,24 @@ package com.deeproot.app.ui.today
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.deeproot.app.core.model.ActiveSession
+import com.deeproot.app.core.model.AppSettings
 import com.deeproot.app.core.model.Lecture
 import com.deeproot.app.core.time.TimeSource
 import com.deeproot.app.data.local.ProgressCounts
 import com.deeproot.app.data.repository.LectureRepository
+import com.deeproot.app.data.repository.SessionRepository
+import com.deeproot.app.data.repository.SettingsRepository
+import com.deeproot.app.data.repository.StartResult
 import com.deeproot.app.data.seed.PlanInfo
 import com.deeproot.app.data.seed.PlanSeeder
 import com.deeproot.app.data.seed.SeedState
 import com.deeproot.app.data.sync.SyncManager
 import com.deeproot.app.data.sync.SyncStatus
+import com.deeproot.app.focus.StudySessionController
+import com.deeproot.app.permissions.PermissionChecker
+import com.deeproot.app.permissions.PermissionState
+import com.deeproot.app.ui.components.MessageCenter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
@@ -45,7 +54,20 @@ data class TodayUiState(
     val selection: Set<String> = emptySet(),
     val showDeleteConfirm: Boolean = false,
     val sync: SyncStatus = SyncStatus(),
+    val activeSession: ActiveSession? = null,
+    val startCandidate: Lecture? = null,
+    val settings: AppSettings = AppSettings(),
+    val permissions: PermissionState = PermissionState(),
 ) {
+    /** Permissions that an enabled feature needs but that are currently off (shown as a banner). */
+    val missingPermissionLabels: List<String>
+        get() = buildList {
+            if (!settings.onboardingComplete) return@buildList
+            if (settings.focusModeEnabled && !permissions.usageAccess) add("Usage access")
+            if (settings.focusModeEnabled && !permissions.overlay) add("Display over other apps")
+            if (settings.remindersEnabled && !permissions.notifications) add("Notifications")
+        }
+
     val isToday: Boolean get() = selectedDate == today
     val selectionMode: Boolean get() = selection.isNotEmpty()
     val dayPending: Int get() = lectures.count { !it.completed }
@@ -59,6 +81,7 @@ data class TodayUiState(
 sealed interface TodayEvent {
     data class ShowUndo(val message: String, val undo: UndoAction) : TodayEvent
     data class ShowMessage(val message: String) : TodayEvent
+    data object OpenFocus : TodayEvent
 }
 
 /** Everything needed to revert a bulk action. */
@@ -71,12 +94,18 @@ class TodayViewModel @Inject constructor(
     private val seeder: PlanSeeder,
     private val syncManager: SyncManager,
     private val time: TimeSource,
+    private val controller: StudySessionController,
+    sessions: SessionRepository,
+    settingsRepository: SettingsRepository,
+    permissionChecker: PermissionChecker,
+    messageCenter: MessageCenter,
 ) : ViewModel() {
 
     private val today = MutableStateFlow(time.today())
     private val selectedDate = MutableStateFlow(time.today())
     private val selection = MutableStateFlow<Set<String>>(emptySet())
     private val showDeleteConfirm = MutableStateFlow(false)
+    private val startCandidate = MutableStateFlow<Lecture?>(null)
     private var initialDateChosen = false
 
     private val events = Channel<TodayEvent>(Channel.BUFFERED)
@@ -103,6 +132,13 @@ class TodayViewModel @Inject constructor(
         val sync: SyncStatus,
     )
 
+    private data class Extras(
+        val active: ActiveSession?,
+        val candidate: Lecture?,
+        val settings: AppSettings,
+        val permissions: PermissionState,
+    )
+
     private val data = combine(today, dayLectures, todayLectures, backlog, repository.observeProgress()) { t, day, tl, b, p ->
         Data(today = t, selected = day.first, lectures = day.second, todayLectures = tl, backlog = b, progress = p)
     }
@@ -110,7 +146,11 @@ class TodayViewModel @Inject constructor(
         Meta(seed, sel, confirm, sync)
     }
 
-    val uiState: StateFlow<TodayUiState> = combine(data, meta) { d, m ->
+    private val extras = combine(sessions.active, startCandidate, settingsRepository.settings, permissionChecker.state) { a, c, st, p ->
+        Extras(a, c, st, p)
+    }
+
+    val uiState: StateFlow<TodayUiState> = combine(data, meta, extras) { d, m, x ->
         val plan = (m.seed as? SeedState.Done)?.info
         TodayUiState(
             loading = m.seed is SeedState.Idle || m.seed is SeedState.Seeding,
@@ -129,10 +169,17 @@ class TodayViewModel @Inject constructor(
             selection = m.selection,
             showDeleteConfirm = m.confirm,
             sync = m.sync,
+            activeSession = x.active,
+            startCandidate = x.candidate,
+            settings = x.settings,
+            permissions = x.permissions,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState(today = time.today(), selectedDate = time.today()))
 
     init {
+        viewModelScope.launch {
+            messageCenter.messages.collect { events.send(TodayEvent.ShowMessage(it)) }
+        }
         viewModelScope.launch {
             // Like the prototype: before the plan starts, open on its first day.
             val state = seeder.seedIfNeeded()
@@ -175,6 +222,39 @@ class TodayViewModel @Inject constructor(
 
     fun toggleCompleted(lecture: Lecture) {
         viewModelScope.launch { repository.setCompleted(listOf(lecture.id), !lecture.completed) }
+    }
+
+    // ---- study session ----
+
+    fun requestStart(lecture: Lecture) {
+        if (uiState.value.activeSession != null) {
+            viewModelScope.launch {
+                events.send(TodayEvent.ShowMessage("A study session is already running"))
+                events.send(TodayEvent.OpenFocus)
+            }
+            return
+        }
+        startCandidate.value = lecture
+    }
+
+    fun dismissStart() {
+        startCandidate.value = null
+    }
+
+    /** Called from the dialog while the app is in the foreground (required to start the foreground service). */
+    fun confirmStart(plannedMinutes: Int) {
+        val lecture = startCandidate.value ?: return
+        startCandidate.value = null
+        viewModelScope.launch {
+            when (controller.start(lecture.id, plannedMinutes)) {
+                is StartResult.Started -> events.send(TodayEvent.OpenFocus)
+                is StartResult.AlreadyRunning -> {
+                    events.send(TodayEvent.ShowMessage("A study session is already running"))
+                    events.send(TodayEvent.OpenFocus)
+                }
+                StartResult.LectureNotFound -> events.send(TodayEvent.ShowMessage("This lecture no longer exists"))
+            }
+        }
     }
 
     // ---- multi-select ----

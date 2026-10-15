@@ -9,18 +9,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.VerifiedUser
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -42,16 +47,16 @@ import com.deeproot.app.data.sync.SyncPhase
 import com.deeproot.app.ui.components.AppCard
 import com.deeproot.app.ui.components.SectionTitle
 import com.deeproot.app.ui.components.SettingRow
+import com.deeproot.app.ui.components.SwitchRow
 import java.text.DateFormat
 import java.util.Date
 
-/**
- * Settings. [extraSections] lets later stages add Reminders / Focus mode / Calendar sections above Account & sync.
- */
+/** Settings: Focus mode, allowed apps, permissions, account & sync, plan info. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    extraSections: @Composable () -> Unit = {},
+    onOpenAllowedApps: () -> Unit,
+    onOpenPermissions: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,7 +78,8 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item { extraSections() }
+            item { SectionTitle("Focus mode") }
+            item { FocusCard(state, viewModel::setFocusMode, onOpenAllowedApps, onOpenPermissions) }
             item { SectionTitle("Account & sync") }
             item { AccountCard(state, onSyncNow = viewModel::syncNow) }
             item { SectionTitle("Lecture plan") }
@@ -86,6 +92,44 @@ fun SettingsScreen(
                     modifier = Modifier.padding(start = 4.dp, top = 12.dp),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun FocusCard(
+    state: SettingsUiState,
+    onFocusChange: (Boolean) -> Unit,
+    onOpenAllowedApps: () -> Unit,
+    onOpenPermissions: () -> Unit,
+) {
+    AppCard {
+        Column {
+            SwitchRow(
+                title = "Focus mode",
+                subtitle = "During a study session, cover apps that are not allowed. Phone, emergency calls and Settings always work.",
+                checked = state.settings.focusModeEnabled,
+                onCheckedChange = onFocusChange,
+                icon = Icons.Outlined.Shield,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            val count = state.settings.allowedApps.size
+            SettingRow(
+                title = "Allowed apps",
+                subtitle = if (count == 0) "None yet — the PW app is pre-selected when you open this" else "$count app${if (count == 1) "" else "s"} allowed during sessions",
+                icon = Icons.Outlined.Apps,
+                onClick = onOpenAllowedApps,
+                trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            val missing = state.permissions.missing.size
+            SettingRow(
+                title = "Permissions",
+                subtitle = if (missing == 0) "All allowed ✓" else "$missing not allowed — tap to review",
+                icon = Icons.Outlined.VerifiedUser,
+                onClick = onOpenPermissions,
+                trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+            )
         }
     }
 }
