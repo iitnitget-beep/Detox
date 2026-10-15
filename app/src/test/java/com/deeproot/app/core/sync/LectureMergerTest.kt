@@ -68,6 +68,29 @@ class LectureMergerTest {
     }
 
     @Test
+    fun `stale remote snapshot does not roll back a clean row`() {
+        // Our completed version (t=10) was acknowledged; a snapshot taken before the ack still shows t=5.
+        val plan = LectureMerger.merge(
+            mapOf("a" to local(lecture("a", 10, completed = true))),
+            mapOf("a" to lecture("a", 5)),
+            remoteIsComplete = true,
+            missingRemoteMeansDeleted = true,
+        )
+        assertTrue(plan.isEmpty)
+    }
+
+    @Test
+    fun `incomplete snapshot never deletes or pushes missing rows`() {
+        val plan = LectureMerger.merge(
+            mapOf("a" to local(lecture("a", 10)), "b" to local(lecture("b", 3), dirty = true)),
+            emptyMap(),
+            remoteIsComplete = false,
+            missingRemoteMeansDeleted = true,
+        )
+        assertTrue(plan.isEmpty)
+    }
+
+    @Test
     fun `identical data is a no-op`() {
         val plan = LectureMerger.merge(
             mapOf("a" to local(lecture("a", 5))),

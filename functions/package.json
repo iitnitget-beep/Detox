@@ -1,0 +1,27 @@
+{
+  "name": "lecture-tracker-functions",
+  "description": "Cloud Functions for Lecture Tracker (seedLectures, scheduledReminder, syncCalendar, onLectureCompleted)",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "copy-plan": "node scripts/copy-plan.mjs",
+    "build": "npm run copy-plan && tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "test": "npm run copy-plan && tsx --test test/*.test.ts",
+    "serve": "npm run build && firebase emulators:start --only auth,functions,firestore",
+    "deploy": "firebase deploy --only functions",
+    "seed:user": "npm run build && node lib/scripts/seedUser.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "tsx": "^4.23.0",
+    "typescript": "~5.9.3"
+  }
+}

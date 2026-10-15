@@ -1,7 +1,31 @@
 package com.deeproot.app
 
 import android.app.Application
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
+import com.deeproot.app.data.sync.SyncManager
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
-class LectureTrackerApp : Application()
+class LectureTrackerApp : Application(), Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var syncManager: SyncManager
+
+    /** WorkManager's default initializer is removed in the manifest so workers get Hilt injection. */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .setMinimumLoggingLevel(if (BuildConfig.DEBUG) android.util.Log.INFO else android.util.Log.ERROR)
+            .build()
+
+    override fun onCreate() {
+        super.onCreate()
+        // Seeds the bundled plan into Room (first launch) and starts Firestore sync.
+        syncManager.start()
+    }
+}

@@ -30,7 +30,9 @@ data class MergePlan(
  * - Remote doc, no local row → take remote.
  * - Local row is dirty → keep local when `local.updatedAt >= remote.updatedAt` (it will be pushed), otherwise the
  *   newer remote version wins (also resurrecting a local tombstone).
- * - Local row is clean → take remote whenever it differs.
+ * - Local row is clean → take remote when it differs, unless the remote version is strictly *older*. The security
+ *   rules only let `updatedAt` grow, so an older remote version can only come from a stale snapshot (one taken
+ *   before our own write was acknowledged); applying it would briefly roll the row back.
  * - Doc missing on the server (only when [remoteIsComplete]):
  *     - dirty, not deleted → push it (an offline edit survives a remote delete — e.g. a calendar event that was
  *       removed after you completed it offline);
@@ -48,8 +50,9 @@ object LectureMerger {
         local == null -> Resolution.TAKE_REMOTE
         local.dirty -> if (local.lecture.updatedAt >= remote.updatedAt) Resolution.KEEP_LOCAL else Resolution.TAKE_REMOTE
         local.deleted -> Resolution.TAKE_REMOTE
-        local.lecture != remote -> Resolution.TAKE_REMOTE
-        else -> Resolution.NOOP
+        local.lecture == remote -> Resolution.NOOP
+        remote.updatedAt < local.lecture.updatedAt -> Resolution.NOOP
+        else -> Resolution.TAKE_REMOTE
     }
 
     fun merge(

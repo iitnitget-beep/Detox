@@ -39,3 +39,7 @@ firestore-debug.log*
 ui-debug.log*
 database-debug.log*
 pubsub-debug.log*
+
+# Firestore rules tests
+firestore-tests/node_modules/
+node_modules/
