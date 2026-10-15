@@ -1,0 +1,143 @@
+rules_version = '2';
+
+// Lecture Tracker security rules.
+// - Every document lives under users/{uid}; only the signed-in owner can read or write it.
+// - Every write is type- and range-checked, and documents may only contain the known fields.
+// - Lecture updates must not move updatedAt backwards (last-writer-wins: a stale offline write cannot overwrite
+//   a newer version from another device).
+// - Stats aggregates and idempotency markers are written by Cloud Functions only (the Admin SDK bypasses rules).
+// Tested by firestore-tests/test/rules.test.ts (runs against the emulator in CI).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------- helpers
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isIsoDate(v) {
+      return v is string && v.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    function optTimestamp(v) {
+      return v == null || v is timestamp;
+    }
+
+    function optString(v, max) {
+      return v == null || (v is string && v.size() <= max);
+    }
+
+    function intIn(v, lo, hi) {
+      return v is int && v >= lo && v <= hi;
+    }
+
+    function textIn(v, lo, hi) {
+      return v is string && v.size() >= lo && v.size() <= hi;
+    }
+
+    // ---------------------------------------------------------------- schemas
+
+    // users/{uid}/lectures/{lectureId}
+    function validLecture(d) {
+      return d.keys().hasAll(['date', 'order', 'subject', 'title', 'completed', 'plannedMinutes',
+                              'studiedSeconds', 'source', 'updatedAt'])
+        && d.keys().hasOnly(['date', 'order', 'subject', 'title', 'completed', 'completedAt', 'plannedMinutes',
+                             'studiedSeconds', 'source', 'calendarEventId', 'updatedAt'])
+        && isIsoDate(d.date)
+        && intIn(d.order, 0, 100000)
+        && d.subject in ['Physics', 'Organic', 'Physical Chem', 'Inorganic', 'Maths', 'Other']
+        && textIn(d.title, 1, 300)
+        && d.completed is bool
+        && optTimestamp(d.get('completedAt', null))
+        && intIn(d.plannedMinutes, 1, 1440)
+        && intIn(d.studiedSeconds, 0, 864000)
+        && d.source in ['plan', 'calendar']
+        && optString(d.get('calendarEventId', null), 1024)
+        && d.updatedAt is timestamp;
+    }
+
+    // users/{uid}/sessions/{sessionId}
+    function validSession(d) {
+      return d.keys().hasAll(['lectureId', 'startedAt', 'endedAt', 'plannedMinutes', 'studiedSeconds'])
+        && d.keys().hasOnly(['lectureId', 'startedAt', 'endedAt', 'plannedMinutes', 'studiedSeconds'])
+        && textIn(d.lectureId, 1, 300)
+        && d.startedAt is timestamp
+        && d.endedAt is timestamp
+        && d.endedAt >= d.startedAt
+        && intIn(d.plannedMinutes, 1, 1440)
+        && intIn(d.studiedSeconds, 0, 864000);
+    }
+
+    // users/{uid}/settings/preferences
+    function validSettings(d) {
+      return d.keys().hasAll(['reminderIntervalHours', 'reminderStartHour', 'reminderEndHour', 'allowedApps', 'updatedAt'])
+        && d.keys().hasOnly(['reminderIntervalHours', 'reminderStartHour', 'reminderEndHour', 'remindersEnabled',
+                             'allowedApps', 'focusModeEnabled', 'calendarId', 'timeZone', 'updatedAt'])
+        && intIn(d.reminderIntervalHours, 1, 12)
+        && intIn(d.reminderStartHour, 0, 23)
+        && intIn(d.reminderEndHour, 1, 24)
+        && d.reminderStartHour < d.reminderEndHour
+        && d.get('remindersEnabled', true) is bool
+        && d.allowedApps is list
+        && d.allowedApps.size() <= 500
+        && d.get('focusModeEnabled', true) is bool
+        && optString(d.get('calendarId', null), 1024)
+        && optString(d.get('timeZone', null), 64)
+        && d.updatedAt is timestamp;
+    }
+
+    // users/{uid}
+    function validUser(d) {
+      return d.keys().hasOnly(['timeZone', 'platform', 'appVersion', 'fcmToken', 'planSeeded', 'planSeededCount',
+                               'lastLocalReminderAt', 'lastPushReminderAt', 'createdAt', 'updatedAt'])
+        && optString(d.get('timeZone', null), 64)
+        && optString(d.get('platform', null), 20)
+        && optString(d.get('appVersion', null), 40)
+        && optString(d.get('fcmToken', null), 4096)
+        && d.get('planSeeded', false) is bool
+        && d.get('planSeededCount', 0) is int
+        && optTimestamp(d.get('lastLocalReminderAt', null))
+        && optTimestamp(d.get('lastPushReminderAt', null))
+        && optTimestamp(d.get('createdAt', null))
+        && optTimestamp(d.get('updatedAt', null));
+    }
+
+    // ---------------------------------------------------------------- paths
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && validUser(request.resource.data);
+      allow delete: if false;
+
+      match /lectures/{lectureId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && lectureId.size() <= 300 && validLecture(request.resource.data);
+        allow update: if isOwner(uid)
+          && validLecture(request.resource.data)
+          && request.resource.data.updatedAt >= resource.data.updatedAt;
+        allow delete: if isOwner(uid);
+      }
+
+      match /sessions/{sessionId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && sessionId.size() <= 100 && validSession(request.resource.data);
+        allow delete: if isOwner(uid);
+      }
+
+      match /settings/{docId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid) && docId == 'preferences' && validSettings(request.resource.data);
+        allow delete: if isOwner(uid) && docId == 'preferences';
+      }
+
+      // Aggregates maintained by the onLectureCompleted function.
+      match /stats/{docId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+    }
+
+    // Everything else (including users/{uid}/statsEvents) is denied by default.
+  }
+}

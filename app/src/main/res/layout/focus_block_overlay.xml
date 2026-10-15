@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full-screen cover shown over distracting apps during a study session (see FocusOverlay). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/focus_overlay_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/overlay_background"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="no"
+        android:text="📚"
+        android:textSize="56sp" />
+
+    <TextView
+        android:id="@+id/focus_overlay_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:accessibilityHeading="true"
+        android:gravity="center"
+        android:text="@string/focus_overlay_title"
+        android:textColor="@color/overlay_text"
+        android:textSize="26sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/focus_overlay_lecture"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:textColor="@color/overlay_text"
+        android:textSize="18sp" />
+
+    <TextView
+        android:id="@+id/focus_overlay_remaining"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:gravity="center"
+        android:textColor="@color/overlay_muted"
+        android:textSize="16sp" />
+
+    <Button
+        android:id="@+id/focus_overlay_back"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:backgroundTint="@color/overlay_button"
+        android:minHeight="56dp"
+        android:minWidth="220dp"
+        android:paddingHorizontal="24dp"
+        android:text="@string/focus_overlay_back"
+        android:textAllCaps="false"
+        android:textColor="@color/overlay_button_text"
+        android:textSize="18sp" />
+
+    <Button
+        android:id="@+id/focus_overlay_phone"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:minHeight="48dp"
+        android:text="@string/focus_overlay_phone"
+        android:textAllCaps="false"
+        android:textColor="@color/overlay_text"
+        android:textSize="16sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:gravity="center"
+        android:text="@string/focus_overlay_hint"
+        android:textColor="@color/overlay_muted"
+        android:textSize="13sp" />
+</LinearLayout>

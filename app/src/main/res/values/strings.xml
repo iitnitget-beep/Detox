@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lecture Tracker</string>
+
+    <!-- Focus mode overlay (shown by a service, so it cannot use Compose strings) -->
+    <string name="focus_overlay_title">Focus mode: finish your lecture</string>
+    <string name="focus_overlay_back">Back to study</string>
+    <string name="focus_overlay_phone">Phone / emergency call</string>
+    <string name="focus_overlay_hint">Allowed apps, phone, emergency calls and Settings always work. Change allowed apps in Lecture Tracker → Settings.</string>
+</resources>

@@ -1,0 +1,17 @@
+{
+  "name": "lecture-tracker-firestore-rules-tests",
+  "description": "Security-rules tests for firestore.rules, run against the Firestore emulator",
+  "private": true,
+  "scripts": {
+    "test": "tsx --test test/*.test.ts",
+    "test:emulator": "cd .. && firestore-tests/node_modules/.bin/firebase emulators:exec --only firestore --project demo-lecture-tracker \"npm --prefix firestore-tests test\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "@types/node": "^22.18.0",
+    "firebase": "^12.19.0",
+    "firebase-tools": "^15.34.0",
+    "tsx": "^4.23.0",
+    "typescript": "~5.9.3"
+  }
+}

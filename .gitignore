@@ -1,0 +1,45 @@
+# Android / Gradle
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+.kotlin/
+*.apk
+*.aab
+
+# Signing keys — never commit
+*.keystore
+*.jks
+keystore.properties
+
+# Firebase Android config: contains your project's API key. This repository is public,
+# so add the file locally (app/google-services.json) — see docs/SETUP_FIREBASE.md.
+app/google-services.json
+app/src/*/google-services.json
+
+# Cloud Functions
+functions/node_modules/
+functions/lib/
+functions/plan/
+functions/*.local
+functions/.env*
+serviceAccount*.json
+*-service-account.json
+
+# Firebase CLI
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+database-debug.log*
+pubsub-debug.log*
+
+# Firestore rules tests
+firestore-tests/node_modules/
+node_modules/

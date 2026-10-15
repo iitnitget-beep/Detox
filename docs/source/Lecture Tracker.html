@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lecture Tracker</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--tx:#1b1f2a;--mu:#6b7280;--ac:#4f46e5;--ok:#16a34a;--bd:#e5e7eb;--bad:#dc2626;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1117;--card:#181b24;--tx:#e8eaf0;--mu:#9aa1b2;--ac:#818cf8;--ok:#4ade80;--bd:#2a2e3b;--bad:#f87171}}
+:root[data-theme="dark"]{--bg:#0f1117;--card:#181b24;--tx:#e8eaf0;--mu:#9aa1b2;--ac:#818cf8;--ok:#4ade80;--bd:#2a2e3b;--bad:#f87171}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,sans-serif}
+.w{max-width:560px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:4px 0}.mu{color:var(--mu);font-size:13px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px;margin:10px 0}
+.bar{height:8px;background:var(--bd);border-radius:9px;overflow:hidden;margin:8px 0 2px}.bar i{display:block;height:100%;background:var(--ok);width:0}
+.nav{display:flex;gap:8px;align-items:center;justify-content:space-between}
+button{font:inherit;background:var(--ac);color:#fff;border:0;border-radius:10px;padding:8px 12px}
+button.g{background:transparent;color:var(--ac);border:1px solid var(--bd)}
+.it{display:flex;gap:12px;align-items:center;padding:11px 4px;border-top:1px solid var(--bd)}.it:first-of-type{border-top:0}
+.it input{width:22px;height:22px;accent-color:var(--ok);flex:none}
+.it.d span{text-decoration:line-through;color:var(--mu)}
+.s{font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;background:var(--bd);color:var(--mu);flex:none}
+h2{font-size:15px;margin:0 0 4px}.bad{color:var(--bad)}
+#toast{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));background:var(--ac);color:#fff;padding:12px;border-radius:12px;display:none}
+label{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0}
+input[type=number]{width:60px;padding:5px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+</style></head><body><div class="w">
+<h1>📚 Lecture Tracker</h1><div class="mu" id="top"></div>
+<div class="bar"><i id="pb"></i></div><div class="mu" id="pt"></div>
+<div class="card nav"><button class="g" id="prev">‹</button><div style="text-align:center"><b id="dl"></b><div class="mu" id="ds"></div></div><button class="g" id="next">›</button></div>
+<div id="back"></div><div class="card" id="day"></div>
+<div class="card"><h2>🔔 Reminders</h2>
+<label>Remind while pending <button id="en">Enable</button></label>
+<label>Every (hours) <input type="number" id="iv" min="1" max="12"></label>
+<label>Between (24h) <span><input type="number" id="h1" min="0" max="23"> – <input type="number" id="h2" min="1" max="24"></span></label>
+<div class="mu">Reminders fire while this app is open (or kept in a background tab). Add it to your home screen for the best results.</div></div>
+<button class="g" id="today" style="width:100%">Jump to today</button></div><div id="toast"></div>
+<script>
+const CH={CM:['Physics','Centre of Mass'],RO:['Physics','Rotation'],OS:['Physics','Oscillation'],KT:['Physics','KTG & Thermo'],PS:['Physics','Physical Props of Solids'],TP:['Physics','Thermal Props'],FL:['Physics','Fluids'],WV:['Physics','Wave'],EC:['Physics','Electric Charges'],MP:['Physics','Modern Physics'],CE:['Physics','Current Electricity'],CP:['Physics','Capacitor'],WO:['Physics','Wave Optics'],GR:['Physics','Gravitation'],MG:['Physics','Magnetism'],EW:['Physics','EM Wave'],SC:['Physics','Semiconductor'],EI:['Physics','EMI'],ER:['Physics','Error'],AC:['Physics','AC'],OP:['Physics','Optics'],
+IU:['Organic','IUPAC'],GO:['Organic','GOC'],IS:['Organic','Isomerism'],HC:['Organic','Hydrocarbon'],HL:['Organic','Haloalkanes'],AP:['Organic','Alcohol/Phenol/Ether'],AM:['Organic','Amines'],AK:['Organic','Aldehyde/Ketone/Carboxylic'],BM:['Organic','Biomolecules'],CL:['Organic','Chemistry in Life'],PO:['Organic','Polymer'],EV:['Organic','Environmental Chemistry'],
+CK:['Physical Chem','Chemical Kinetics'],TD:['Physical Chem','Thermodynamics'],CQ:['Physical Chem','Chemical Equilibrium'],IQ:['Physical Chem','Ionic Equilibrium'],EL:['Physical Chem','Electrochemistry'],SA:['Physical Chem','Structure of Atom'],
+CB:['Inorganic','Chemical Bonding'],HY:['Inorganic','Hydrogen'],SB:['Inorganic','S Block'],CC:['Inorganic','Coordination Compound'],PB:['Inorganic','P Block'],DF:['Inorganic','D and F Block'],SY:['Inorganic','Salt Analysis'],MT:['Inorganic','Metallurgy'],
+BT:['Maths','Binomial Theorem'],PC:['Maths','Permutation & Combination'],DT:['Maths','Determinant'],MX:['Maths','Matrix'],ST:['Maths','Set'],RF:['Maths','Relation & Function'],IT:['Maths','Inverse Trig'],LC:['Maths','LCD'],MD:['Maths','Method of Derivative'],AD:['Maths','App of Derivative'],II:['Maths','Indefinite Integration'],DI:['Maths','Definite Integration'],AI:['Maths','App of Integration'],DE:['Maths','Differential Equation'],SL:['Maths','Straight Line'],SS:['Maths','Statistics'],CR:['Maths','Circle'],TR:['Maths','Solution of Triangle'],PA:['Maths','Parabola'],EP:['Maths','Ellipse'],HB:['Maths','Hyperbola'],VC:['Maths','Vector'],TH:['Maths','3D'],PR:['Maths','Probability'],CN:['Maths','Complex Number']};
+const RAW=`10-15:CM1 CM2 IU1 CK1 BT1 PC1
+10-16:CM3 CM4 IU2 CK2 PC2 PC3
+10-17:CM5 CM6 IU3 CK3 PC4 PC5
+10-18:CM7 CM8 IU4 CK4 PC6 DT1
+10-19:CM9 CM10 IU5 CK5 DT2 DT3
+10-20:CM11 RO1 IU6 CK6 DT4 DT5
+10-21:RO2 RO3 IU7 CK7 DT6 MX1
+10-22:RO4 RO5 GO1 TD1 MX2 MX3
+10-23:RO6 RO7 GO2 TD2 MX4 MX5
+10-24:RO8 RO9 GO3 TD3 ST1 ST2
+10-25:RO10 RO11 GO4 TD4 ST3 RF1
+10-26:RO12 RO13 GO5 TD5 RF2 RF3
+10-27:RO14 RO15 GO6 TD6 RF4 RF5
+10-29:RO16 RO17 GO7 TD7 RF6 RF7
+10-30:RO18 RO19 GO8 TD8 RF8 RF9
+11-01:RO20 RO21 GO9 TD9 RF10 RF11
+11-03:OS1 OS2 GO10 TD10 RF12 IT1
+11-04:OS3 OS4 GO11 TD11 IT2 IT3
+11-06:OS5 OS6 GO12 TD12 IT4 IT5
+11-07:OS7 OS8 GO13 CQ1 IT6 LC1
+11-08:OS9 KT1 IS1 CQ2 LC2 LC3
+11-09:KT2 KT3 IS2 CQ3 LC4 LC5
+11-10:KT4 KT5 IS3 CQ4 LC6 LC7
+11-11:KT6 PS1 IS4 CQ5 LC8 LC9
+11-12:TP1 TP2 IS5 IQ1 LC10 MD1
+11-13:TP3 TP4 IS6 IQ2 MD2 MD3
+11-14:TP5 TP6 IS7 IQ3 AD1 AD2
+11-15:TP7 TP8 IS8 IQ4 AD3 AD4
+11-16:TP9 TP10 IS9 IQ5 AD5 AD6
+11-18:TP11 TP12 IS10 IQ6 AD7 AD8
+11-19:FL1 FL2 IS11 IQ7 AD9 AD10
+11-20:FL3 FL4 IS12 EL1 II1 II2
+11-21:FL5 FL6 IS13 EL2 II3 II4
+11-22:FL7 FL8 IS14 EL3 II5 II6
+11-23:FL9 FL10 IS15 EL4 DI1 DI2
+11-24:FL11 FL12 HC1 EL5 DI3 DI4
+11-25:FL13 WV1 HC2 EL6 DI5 AI1
+11-26:WV2 WV3 HC3 EL7 AI2 DE1
+11-27:WV4 WV5 HC4 EL8 DE2 DE3
+11-28:WV6 WV7 HC5 EL9 DE4 DE5
+11-29:WV8 WV9 HC6 SA1 SL1 SL2
+11-30:EC1 EC2 HC7 SA2 SL3 SL4
+12-01:EC3 EC4 HC8 SA3 SL5 SS1
+12-02:EC5 EC6 HC9 SA4 CR1 CR2
+12-03:EC7 EC8 HC10 SA5 CR3 CR4
+12-04:EC9 EC10 HC11 SA6 CR5 CR6
+12-05:EC11 EC12 HC12 SA7 CR7 TR1
+12-06:EC13 EC14 HC13 SA8 TR2 TR3
+12-07:EC15 EC16 HL1 CB1 PA1 PA2
+12-08:EC17 MP1 HL2 CB2 PA3 PA4
+12-09:MP2 MP3 HL3 CB3 PA5 EP1
+12-10:MP4 MP5 HL4 CB4 EP2 EP3
+12-11:MP6 MP7 HL5 CB5 EP4 EP5
+12-12:CE1 CE2 HL6 CB6 HB1 HB2
+12-13:CE3 CE4 HL7 CB7 HB3 HB4
+12-14:CE5 CE6 HL8 CB8 VC1 VC2
+12-15:CE7 CP1 AP1 CB9 VC3 VC4
+12-16:CP2 CP3 AP2 CB10 TH1 TH2
+12-17:CP4 CP5 AP3 CB11 TH3 TH4
+12-18:CP6 CP7 AP4 CB12 TH5 PR1
+12-19:CP8 WO1 AP5 CB13 PR2 PR3
+12-20:WO2 WO3 AP6 CB14 PR4 CN1
+12-21:WO4 WO5 AM1 CB15 CN2 CN3
+12-22:GR1 GR2 AM2 CB16 CB17 HY1
+12-23:MG1 MG2 MG3 AK1 CB18 SB1
+12-24:MG4 MG5 MG6 AK2 SB2
+12-25:MG7 MG8 MG9 AK3 SB3
+12-26:EW1 EW2 SC1 AK4 CC1 CC2
+12-27:SC2 SC3 EI1 AK5 CC3 CC4
+12-28:EI2 EI3 EI4 AK6 CC5
+12-29:EI5 EI6 ER1 AK7 CC6
+12-30:ER2 ER3 AC1 AK8 CC7
+12-31:AC2 AC3 BM1 CC8 CC9
+01-01:AC4 AC5 BM2 CC10 CC11
+01-02:OP1 OP2 BM3 CC12 CC13
+01-03:OP3 OP4 BM4 CC14 PB1
+01-04:OP5 OP6 CL1 PB2 PB3
+01-05:OP7 OP8 PO1 PB4 PB5
+01-06:OP9 OP10 EV1 PB6 PB7
+01-07:OP11 OP12 DF1 DF2 DF3 DF4
+01-08:OP13 OP14 DF5 DF6 SY1 SY2
+01-09:SY3 SY4 SY5 SY6 MT1`;
+const S={};RAW.split('\n').forEach(l=>{const[d,c]=l.split(':');const k=(+d.slice(0,2)>=10?'2026-':'2027-')+d;S[k]=c.split(' ').map(x=>{const m=x.match(/^([A-Z]{2})(\d+)$/);return{id:k+'|'+x,sub:CH[m[1]][0],t:CH[m[1]][1]+' '+m[2]}})});
+const days=Object.keys(S).sort(),$=i=>document.getElementById(i);
+let st={done:{},iv:2,h1:8,h2:22,en:false,last:0};
+try{Object.assign(st,JSON.parse(localStorage.getItem('lt3')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('lt3',JSON.stringify(st))}catch(e){}};
+const iso=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const tk=()=>iso(new Date());
+let cur=days.includes(tk())?tk():(tk()<days[0]?days[0]:days[days.length-1]);
+const fmt=k=>new Date(k+'T00:00').toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'});
+const pend=k=>S[k].filter(x=>!st.done[x.id]);
+const backlog=()=>days.filter(k=>k<tk()).flatMap(k=>pend(k));
+function row(x,k){return `<label class="it ${st.done[x.id]?'d':''}" style="margin:0"><input type="checkbox" data-id="${x.id}" ${st.done[x.id]?'checked':''}><span style="flex:1">${x.t}</span><b class="s">${x.sub}</b></label>`}
+function render(){
+ const all=days.flatMap(k=>S[k]),dn=all.filter(x=>st.done[x.id]).length;
+ $('pb').style.width=(dn/all.length*100)+'%';$('pt').textContent=dn+' of '+all.length+' lectures done';
+ const t=tk(),tp=S[t]?pend(t).length:0,bl=backlog().length;
+ $('top').textContent=t<days[0]?'Starts '+fmt(days[0]):(tp+bl)?`${tp} pending today · ${bl} backlog`:'All caught up 🎉';
+ $('dl').textContent=fmt(cur)+(cur===t?' · Today':'');
+ const p=pend(cur).length;$('ds').textContent=p?p+' pending of '+S[cur].length:'All done ✓';
+ $('day').innerHTML=S[cur].map(x=>row(x)).join('');
+ const bk=days.filter(k=>k<t&&k!==cur&&pend(k).length);
+ $('back').innerHTML=bk.length?`<div class="card"><h2 class="bad">⚠ Backlog (${bl})</h2>`+bk.map(k=>`<div class="mu" style="margin-top:8px">${fmt(k)}</div>`+pend(k).map(x=>row(x)).join('')).join('')+'</div>':'';
+ $('iv').value=st.iv;$('h1').value=st.h1;$('h2').value=st.h2;
+ $('en').textContent=st.en?'On ✓':'Enable';
+}
+document.addEventListener('change',e=>{const id=e.target.dataset&&e.target.dataset.id;if(id){if(e.target.checked)st.done[id]=1;else delete st.done[id];save();render()}});
+$('prev').onclick=()=>{const i=days.indexOf(cur);if(i>0){cur=days[i-1];render()}};
+$('next').onclick=()=>{const i=days.indexOf(cur);if(i<days.length-1){cur=days[i+1];render()}};
+$('today').onclick=()=>{cur=days.includes(tk())?tk():cur;render()};
+['iv','h1','h2'].forEach(i=>$(i).onchange=()=>{st[i]=Math.max(0,+$(i).value||0)||st[i];if(i==='iv')st.iv=Math.max(1,st.iv);save()});
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',8000)}
+function notify(){
+ const t=tk(),p=(S[t]?pend(t):[]).concat(backlog());if(!p.length||t<days[0])return;
+ const n=p.length,msg=`${n} lecture${n>1?'s':''} pending. Next: ${p[0].sub} – ${p[0].t}`;
+ st.last=Date.now();save();toast('🔔 '+msg);
+ try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+ try{if('Notification' in window&&Notification.permission==='granted')new Notification('Lectures pending',{body:msg,tag:'lt'})}catch(e){}
+}
+function check(){
+ if(!st.en)return;const h=new Date().getHours();
+ if(h<st.h1||h>=st.h2)return;
+ if(Date.now()-st.last>=st.iv*3600e3)notify();
+}
+$('en').onclick=async()=>{
+ st.en=!st.en;
+ if(st.en){try{if('Notification' in window&&Notification.permission==='default')await Notification.requestPermission()}catch(e){}
+  st.last=Date.now();toast('Reminders on. First one in '+st.iv+'h if lectures are pending.')}
+ save();render()};
+setInterval(check,60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){check();cur=cur;render()}});
+render();check();
+</script></body></html>
