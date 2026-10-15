@@ -4,3 +4,4 @@ initializeApp();
 
 export { seedLectures } from "./seedLectures";
 export { onLectureCompleted } from "./onLectureCompleted";
+export { scheduledReminder } from "./scheduledReminder";

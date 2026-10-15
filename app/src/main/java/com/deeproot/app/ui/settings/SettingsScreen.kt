@@ -3,6 +3,8 @@ package com.deeproot.app.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -10,7 +12,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.BatteryAlert
+import androidx.compose.material.icons.outlined.NotificationAdd
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
@@ -25,6 +32,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -36,7 +44,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,6 +88,18 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            item { SectionTitle("Reminders") }
+            item {
+                RemindersCard(
+                    state = state,
+                    onEnabled = viewModel::setRemindersEnabled,
+                    onInterval = viewModel::setInterval,
+                    onStart = viewModel::setStartHour,
+                    onEnd = viewModel::setEndHour,
+                    onTest = viewModel::sendTestReminder,
+                    onOpenPermissions = onOpenPermissions,
+                )
+            }
             item { SectionTitle("Focus mode") }
             item { FocusCard(state, viewModel::setFocusMode, onOpenAllowedApps, onOpenPermissions) }
             item { SectionTitle("Account & sync") }
@@ -94,6 +116,113 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun RemindersCard(
+    state: SettingsUiState,
+    onEnabled: (Boolean) -> Unit,
+    onInterval: (Int) -> Unit,
+    onStart: (Int) -> Unit,
+    onEnd: (Int) -> Unit,
+    onTest: () -> Unit,
+    onOpenPermissions: () -> Unit,
+) {
+    val s = state.settings
+    AppCard {
+        Column {
+            SwitchRow(
+                title = "Remind me while lectures are pending",
+                subtitle = when {
+                    !state.permissions.notifications -> "Notifications are not allowed — tap Permissions below"
+                    state.nextReminder != null && s.remindersEnabled ->
+                        "Next check around ${Dates.hourLabel(state.nextReminder.hour)}" +
+                            if (state.nextReminder.toLocalDate() != java.time.LocalDate.now()) " tomorrow" else ""
+                    else -> "Only if something is pending today or in the backlog"
+                },
+                checked = s.remindersEnabled,
+                onCheckedChange = onEnabled,
+                icon = Icons.Outlined.NotificationsActive,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            NumberSettingRow(
+                title = "Every",
+                valueText = "${s.reminderIntervalHours} h",
+                enabled = s.remindersEnabled,
+                onMinus = { onInterval(s.reminderIntervalHours - 1) },
+                onPlus = { onInterval(s.reminderIntervalHours + 1) },
+                canMinus = s.reminderIntervalHours > 1,
+                canPlus = s.reminderIntervalHours < 12,
+            )
+            NumberSettingRow(
+                title = "From",
+                valueText = Dates.hourLabel(s.reminderStartHour),
+                enabled = s.remindersEnabled,
+                onMinus = { onStart(s.reminderStartHour - 1) },
+                onPlus = { onStart(s.reminderStartHour + 1) },
+                canMinus = s.reminderStartHour > 0,
+                canPlus = s.reminderStartHour < 23,
+            )
+            NumberSettingRow(
+                title = "Until",
+                valueText = Dates.hourLabel(s.reminderEndHour),
+                enabled = s.remindersEnabled,
+                onMinus = { onEnd(s.reminderEndHour - 1) },
+                onPlus = { onEnd(s.reminderEndHour + 1) },
+                canMinus = s.reminderEndHour > 1,
+                canPlus = s.reminderEndHour < 24,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            SettingRow(
+                title = "Send a test reminder",
+                subtitle = "Shows the current reminder text right now",
+                icon = Icons.Outlined.NotificationAdd,
+                onClick = onTest,
+            )
+            if (!state.permissions.batteryUnrestricted) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SettingRow(
+                    title = "Reminders may arrive late",
+                    subtitle = "Android delays background work in Doze/battery saver. Allow unrestricted battery in Permissions; " +
+                        "a server push (Cloud Function) also covers missed reminders.",
+                    icon = Icons.Outlined.BatteryAlert,
+                    onClick = onOpenPermissions,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NumberSettingRow(
+    title: String,
+    valueText: String,
+    enabled: Boolean,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    canMinus: Boolean,
+    canPlus: Boolean,
+) {
+    SettingRow(
+        title = title,
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onMinus, enabled = enabled && canMinus) {
+                    Icon(Icons.Filled.Remove, contentDescription = "Decrease $title")
+                }
+                Text(
+                    valueText,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.widthIn(min = 56.dp),
+                    textAlign = TextAlign.Center,
+                )
+                IconButton(onClick = onPlus, enabled = enabled && canPlus) {
+                    Icon(Icons.Filled.Add, contentDescription = "Increase $title")
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -141,7 +270,7 @@ private fun AccountCard(state: SettingsUiState, onSyncNow: () -> Unit) {
         Column {
             val accountText = when {
                 !sync.signedIn -> "Not signed in yet (needs internet once)"
-                sync.isAnonymous -> "Guest account (anonymous). Link Google in the Calendar section to keep your data if you reinstall."
+                sync.isAnonymous -> "Guest account (anonymous). Google sign-in (Stage 4) keeps your data if you reinstall."
                 else -> listOfNotNull(sync.displayName, sync.email).joinToString(" · ").ifBlank { "Google account" }
             }
             SettingRow(title = "Account", subtitle = accountText, icon = Icons.Outlined.AccountCircle)

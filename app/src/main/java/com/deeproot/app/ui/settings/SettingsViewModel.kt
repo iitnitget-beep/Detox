@@ -10,6 +10,9 @@ import com.deeproot.app.data.sync.SyncManager
 import com.deeproot.app.data.sync.SyncStatus
 import com.deeproot.app.permissions.PermissionChecker
 import com.deeproot.app.permissions.PermissionState
+import com.deeproot.app.reminders.ReminderNotifier
+import com.deeproot.app.reminders.ReminderScheduler
+import java.time.LocalDateTime
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +31,7 @@ data class SettingsUiState(
     val seed: SeedState = SeedState.Idle,
     val syncingNow: Boolean = false,
     val permissions: PermissionState = PermissionState(),
+    val nextReminder: LocalDateTime? = null,
 )
 
 @HiltViewModel
@@ -36,6 +40,8 @@ class SettingsViewModel @Inject constructor(
     private val syncManager: SyncManager,
     seeder: PlanSeeder,
     permissionChecker: PermissionChecker,
+    private val reminderScheduler: ReminderScheduler,
+    private val reminderNotifier: ReminderNotifier,
 ) : ViewModel() {
 
     private val syncingNow = MutableStateFlow(false)
@@ -48,11 +54,54 @@ class SettingsViewModel @Inject constructor(
         seeder.state,
         syncingNow,
         permissionChecker.state,
-    ) { settings, sync, seed, busy, permissions -> SettingsUiState(settings, sync, seed, busy, permissions) }
+    ) { settings, sync, seed, busy, permissions ->
+        SettingsUiState(
+            settings = settings,
+            sync = sync,
+            seed = seed,
+            syncingNow = busy,
+            permissions = permissions,
+            nextReminder = if (settings.onboardingComplete && permissions.notifications) reminderScheduler.nextSlotTime(settings) else null,
+        )
+    }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun setFocusMode(enabled: Boolean) {
         viewModelScope.launch { settingsRepository.update { it.copy(focusModeEnabled = enabled) } }
+    }
+
+    fun setRemindersEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepository.update { it.copy(remindersEnabled = enabled) } }
+    }
+
+    fun setInterval(hours: Int) {
+        viewModelScope.launch { settingsRepository.update { it.copy(reminderIntervalHours = hours.coerceIn(1, 12)) } }
+    }
+
+    /** Keeps start < end: moving the start past the end pushes the end along (and vice versa). */
+    fun setStartHour(hour: Int) {
+        viewModelScope.launch {
+            settingsRepository.update {
+                val start = hour.coerceIn(0, 23)
+                it.copy(reminderStartHour = start, reminderEndHour = maxOf(it.reminderEndHour, start + 1))
+            }
+        }
+    }
+
+    fun setEndHour(hour: Int) {
+        viewModelScope.launch {
+            settingsRepository.update {
+                val end = hour.coerceIn(1, 24)
+                it.copy(reminderEndHour = end, reminderStartHour = minOf(it.reminderStartHour, end - 1))
+            }
+        }
+    }
+
+    fun sendTestReminder() {
+        viewModelScope.launch {
+            val shown = reminderNotifier.showTest()
+            messages.send(if (shown) "Test reminder sent" else "Allow notifications first (Settings → Permissions)")
+        }
     }
 
     fun syncNow() {
