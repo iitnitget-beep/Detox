@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +59,7 @@ import com.deeproot.app.ui.components.AppCard
 import com.deeproot.app.ui.components.SectionTitle
 import com.deeproot.app.ui.components.SettingRow
 import com.deeproot.app.ui.components.SwitchRow
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -71,6 +73,7 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     LaunchedEffect(viewModel) { viewModel.messageFlow.collect { snackbarHostState.showSnackbar(it) } }
 
     Scaffold(
@@ -102,6 +105,8 @@ fun SettingsScreen(
             }
             item { SectionTitle("Focus mode") }
             item { FocusCard(state, viewModel::setFocusMode, onOpenAllowedApps, onOpenPermissions) }
+            item { SectionTitle("Google account & Calendar") }
+            item { CalendarSection(onMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } }) }
             item { SectionTitle("Account & sync") }
             item { AccountCard(state, onSyncNow = viewModel::syncNow) }
             item { SectionTitle("Lecture plan") }
@@ -270,7 +275,7 @@ private fun AccountCard(state: SettingsUiState, onSyncNow: () -> Unit) {
         Column {
             val accountText = when {
                 !sync.signedIn -> "Not signed in yet (needs internet once)"
-                sync.isAnonymous -> "Guest account (anonymous). Google sign-in (Stage 4) keeps your data if you reinstall."
+                sync.isAnonymous -> "Guest account (anonymous). Sign in with Google above to keep your data if you reinstall."
                 else -> listOfNotNull(sync.displayName, sync.email).joinToString(" · ").ifBlank { "Google account" }
             }
             SettingRow(title = "Account", subtitle = accountText, icon = Icons.Outlined.AccountCircle)

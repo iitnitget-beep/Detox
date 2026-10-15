@@ -1,14 +1,18 @@
 package com.deeproot.app.data.repository
 
 import androidx.room.withTransaction
+import com.deeproot.app.core.calendar.CalendarDiffResult
 import com.deeproot.app.core.model.Lecture
+import com.deeproot.app.core.model.LectureSource
 import com.deeproot.app.core.time.Dates
 import com.deeproot.app.core.time.TimeSource
 import com.deeproot.app.data.local.AppDatabase
 import com.deeproot.app.data.local.LectureDao
+import com.deeproot.app.data.local.LectureEntity
 import com.deeproot.app.data.local.ProgressCounts
 import com.deeproot.app.data.local.toDomain
 import com.deeproot.app.data.local.toEntity
+import com.deeproot.app.data.prefs.SettingsDataStore
 import com.deeproot.app.data.sync.SyncTrigger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -27,6 +31,7 @@ class LectureRepository @Inject constructor(
     private val dao: LectureDao,
     private val time: TimeSource,
     private val syncTrigger: SyncTrigger,
+    private val prefs: SettingsDataStore,
 ) {
     fun observeDay(date: LocalDate): Flow<List<Lecture>> =
         dao.observeByDate(Dates.toIso(date)).map { rows -> rows.map { it.toDomain() } }
@@ -82,7 +87,11 @@ class LectureRepository @Inject constructor(
             if (rows.isNotEmpty()) dao.upsertAll(rows.map { it.copy(deleted = true, dirty = true, updatedAt = now) })
             rows.map { it.toDomain() }
         }
-        if (snapshots.isNotEmpty()) syncTrigger.requestPush()
+        if (snapshots.isNotEmpty()) {
+            // A deleted calendar lecture must not come back with the next calendar sync.
+            prefs.addIgnoredCalendarEvents(snapshots.filter { it.source == LectureSource.CALENDAR }.mapNotNull { it.calendarEventId })
+            syncTrigger.requestPush()
+        }
         return snapshots
     }
 
@@ -95,6 +104,56 @@ class LectureRepository @Inject constructor(
         val now = time.nowMillis()
         db.withTransaction {
             dao.upsertAll(previous.map { it.copy(updatedAt = now).toEntity(dirty = true, deleted = false) })
+        }
+        prefs.removeIgnoredCalendarEvents(previous.filter { it.source == LectureSource.CALENDAR }.mapNotNull { it.calendarEventId })
+        syncTrigger.requestPush()
+    }
+
+    /**
+     * Applies a calendar diff computed on the device: inserts/updates only touch event-derived fields (completion and
+     * studied time are kept), deletes are soft deletes and never remove completed lectures.
+     */
+    suspend fun applyCalendarDiff(diff: CalendarDiffResult) {
+        if (diff.isEmpty) return
+        val now = time.nowMillis()
+        db.withTransaction {
+            val wanted = diff.inserts + diff.updates
+            val ids = wanted.map { it.id } + diff.deletes
+            val current = ids.chunked(SQL_CHUNK).flatMap { dao.getByIds(it) }.associateBy { it.id }
+            val upserts = wanted.map { f ->
+                val row = current[f.id]
+                row?.copy(
+                    date = Dates.toIso(f.date),
+                    order = f.order,
+                    subject = f.subject,
+                    title = f.title,
+                    plannedMinutes = f.plannedMinutes,
+                    source = LectureSource.CALENDAR.wire,
+                    calendarEventId = f.calendarEventId,
+                    deleted = false,
+                    updatedAt = now,
+                    dirty = true,
+                ) ?: LectureEntity(
+                    id = f.id,
+                    date = Dates.toIso(f.date),
+                    order = f.order,
+                    subject = f.subject,
+                    title = f.title,
+                    completed = false,
+                    completedAt = null,
+                    plannedMinutes = f.plannedMinutes,
+                    studiedSeconds = 0L,
+                    source = LectureSource.CALENDAR.wire,
+                    calendarEventId = f.calendarEventId,
+                    updatedAt = now,
+                    dirty = true,
+                )
+            }
+            upserts.chunked(SQL_CHUNK).forEach { dao.upsertAll(it) }
+            val tombstones = diff.deletes.mapNotNull { id ->
+                current[id]?.takeIf { !it.completed && !it.deleted }?.copy(deleted = true, dirty = true, updatedAt = now)
+            }
+            if (tombstones.isNotEmpty()) dao.upsertAll(tombstones)
         }
         syncTrigger.requestPush()
     }
@@ -139,5 +198,6 @@ class LectureRepository @Inject constructor(
         /** Mirrors the limits in firestore.rules. */
         const val MAX_STUDIED_SECONDS = 864_000L
         const val MAX_PLANNED_MINUTES = 1_440
+        private const val SQL_CHUNK = 500
     }
 }

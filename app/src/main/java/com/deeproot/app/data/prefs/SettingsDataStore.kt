@@ -144,6 +144,19 @@ class SettingsDataStore @Inject constructor(
         }
     }
 
+    /** Calendar events whose imported lecture the user deleted: never re-imported by calendar sync. */
+    suspend fun ignoredCalendarEvents(): Set<String> = data.first()[Keys.CAL_IGNORED] ?: emptySet()
+
+    suspend fun addIgnoredCalendarEvents(eventIds: Collection<String>) {
+        if (eventIds.isEmpty()) return
+        store.edit { it[Keys.CAL_IGNORED] = (it[Keys.CAL_IGNORED] ?: emptySet()) + eventIds }
+    }
+
+    suspend fun removeIgnoredCalendarEvents(eventIds: Collection<String>) {
+        if (eventIds.isEmpty()) return
+        store.edit { it[Keys.CAL_IGNORED] = (it[Keys.CAL_IGNORED] ?: emptySet()) - eventIds.toSet() }
+    }
+
     suspend fun setCalendar(connected: Boolean, calendarId: String?, calendarName: String?, nowMillis: Long) {
         store.edit {
             it[Keys.CAL_CONNECTED] = connected
@@ -230,6 +243,7 @@ class SettingsDataStore @Inject constructor(
         val CAL_LAST_SYNC_AT = longPreferencesKey("calendar_last_sync_at")
         val CAL_LAST_SYNC_MSG = stringPreferencesKey("calendar_last_sync_message")
         val CAL_NEEDS_REAUTH = booleanPreferencesKey("calendar_needs_reauth")
+        val CAL_IGNORED = stringSetPreferencesKey("calendar_ignored_event_ids")
     }
 }
 

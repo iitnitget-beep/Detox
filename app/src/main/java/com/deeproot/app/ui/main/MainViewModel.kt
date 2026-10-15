@@ -2,6 +2,7 @@ package com.deeproot.app.ui.main
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.deeproot.app.data.calendar.CalendarRepository
 import com.deeproot.app.data.repository.SettingsRepository
 import com.deeproot.app.focus.StudySessionController
 import com.deeproot.app.permissions.PermissionChecker
@@ -18,6 +19,7 @@ class MainViewModel @Inject constructor(
     private val settings: SettingsRepository,
     private val permissionChecker: PermissionChecker,
     private val controller: StudySessionController,
+    private val calendar: CalendarRepository,
 ) : ViewModel() {
 
     private val _startDestination = MutableStateFlow<String?>(null)
@@ -27,7 +29,9 @@ class MainViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            _startDestination.value = if (settings.current().onboardingComplete) Routes.TODAY else Routes.ONBOARDING
+            val current = settings.current()
+            _startDestination.value = if (current.onboardingComplete) Routes.TODAY else Routes.ONBOARDING
+            if (current.calendarConnected) calendar.schedulePeriodicSync()
         }
     }
 
@@ -35,5 +39,7 @@ class MainViewModel @Inject constructor(
     fun onResume() {
         permissionChecker.refresh()
         viewModelScope.launch { controller.ensureServiceRunning() }
+        // Calendar: sync on open when the last sync is older than 10 minutes (silent, no UI).
+        viewModelScope.launch { runCatching { calendar.syncIfStale() } }
     }
 }

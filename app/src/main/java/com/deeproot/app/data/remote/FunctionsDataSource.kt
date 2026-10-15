@@ -50,10 +50,22 @@ class FunctionsDataSource @Inject constructor(
      * Server-side calendar sync. The OAuth access token (scope calendar.readonly) is passed per call and never
      * stored on the server.
      */
-    suspend fun syncCalendar(accessToken: String, calendarId: String, timeZone: String): CalendarSyncResult {
+    suspend fun syncCalendar(
+        accessToken: String,
+        calendarId: String,
+        timeZone: String,
+        ignoredEventIds: Collection<String>,
+    ): CalendarSyncResult {
         val result = functions.getHttpsCallable("syncCalendar")
             .apply { setTimeout(120, TimeUnit.SECONDS) }
-            .call(hashMapOf("accessToken" to accessToken, "calendarId" to calendarId, "timeZone" to timeZone))
+            .call(
+                hashMapOf(
+                    "accessToken" to accessToken,
+                    "calendarId" to calendarId,
+                    "timeZone" to timeZone,
+                    "ignoredEventIds" to ignoredEventIds.take(2000),
+                ),
+            )
             .await()
         val data = result.getData() as? Map<*, *> ?: throw IllegalStateException("Unexpected syncCalendar response")
         return CalendarSyncResult(
