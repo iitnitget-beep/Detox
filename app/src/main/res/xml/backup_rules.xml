@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Data lives in Firestore; exclude local caches from Android auto-backup (API 23-30). -->
+<full-backup-content>
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="datastore" />
+</full-backup-content>
