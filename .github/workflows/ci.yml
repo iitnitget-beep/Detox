@@ -65,16 +65,25 @@ jobs:
     name: Cloud Functions build + tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: ${{ hashFiles('functions/package.json') != '' }}
     defaults:
       run:
         working-directory: functions
     steps:
       - uses: actions/checkout@v4
+      - name: Check for functions project
+        id: check
+        working-directory: .
+        run: |
+          if [ -f functions/package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.present == 'true'
         with:
           node-version: "22"
-      - run: npm install --no-audit --no-fund
-      - run: npm run lint
-      - run: npm run build
-      - run: npm test
+      - if: steps.check.outputs.present == 'true'
+        run: npm install --no-audit --no-fund
+      - if: steps.check.outputs.present == 'true'
+        run: npm run lint
+      - if: steps.check.outputs.present == 'true'
+        run: npm run build
+      - if: steps.check.outputs.present == 'true'
+        run: npm test
