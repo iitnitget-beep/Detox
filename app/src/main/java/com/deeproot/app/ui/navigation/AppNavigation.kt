@@ -144,9 +144,18 @@ fun AppNavigation(
     }
 }
 
+/**
+ * Bottom-bar navigation. Pops up to Today rather than the graph's start destination: on the first run the start
+ * destination is the onboarding screen, which is no longer in the back stack once onboarding is finished.
+ */
 fun NavHostController.navigateTopLevel(route: String) {
+    val todayInBackStack = runCatching { getBackStackEntry(Routes.TODAY) }.isSuccess
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        if (todayInBackStack) {
+            popUpTo(Routes.TODAY) { saveState = true }
+        } else {
+            popUpTo(graph.findStartDestination().id) { saveState = true }
+        }
         launchSingleTop = true
         restoreState = true
     }
